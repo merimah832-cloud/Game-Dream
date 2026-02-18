@@ -1,4 +1,4 @@
-import * as PIXI from 'pixi';
+// PIXI is now global
 import { CONFIG } from './config.js';
 import { MapGenerator } from './mapGenerator.js';
 import { VisionManager } from './vision.js';
