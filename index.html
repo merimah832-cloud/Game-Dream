@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Game Dream | Battle Royale</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "pixi": "https://esm.sh/pixi.js@8.0.0",
+            "playroom": "https://esm.sh/playroomkit"
+        }
+    }
+    </script>
+</head>
+
+<body>
+    <div id="loading-overlay">ЗАГРУЗКА...</div>
+    <div id="game-container"></div>
+    <div id="ui-root">
+        <div id="hud">
+            <div class="stat-bar">
+                <div id="armor-bar" class="bar-fill armor"></div>
+            </div>
+            <div class="stat-bar">
+                <div id="health-bar" class="bar-fill health"></div>
+            </div>
+            <div id="weapon-info">Pistol | 7/30</div>
+        </div>
+    </div>
+
+    <!-- Dependencies for Playroom -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <script type="module" src="main.js"></script>
+</body>
+
+</html>

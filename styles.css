@@ -1,0 +1,90 @@
+:root {
+    --health-color: #ff4757;
+    --armor-color: #1e90ff;
+    --hud-bg: rgba(0, 0, 0, 0.6);
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #1a1a1a;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: white;
+    user-select: none;
+}
+
+#loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #1a1a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 24px;
+    z-index: 1000;
+}
+
+#game-container {
+    width: 100vw;
+    height: 100vh;
+}
+
+#ui-root {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#hud {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    padding: 15px;
+    background: var(--hud-bg);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 250px;
+}
+
+.stat-bar {
+    width: 100%;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    width: 100%;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bar-fill.health {
+    background: linear-gradient(90deg, #ff4757, #ff6b81);
+    box-shadow: 0 0 10px rgba(255, 71, 87, 0.4);
+}
+
+.bar-fill.armor {
+    background: linear-gradient(90deg, #1e90ff, #70a1ff);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.4);
+}
+
+#weapon-info {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    justify-content: space-between;
+}

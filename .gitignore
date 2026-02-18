@@ -1,0 +1,6 @@
+node_modules/
+stats.db
+.DS_Store
+*.log
+# Avoid pushing sensitive data
+.env
