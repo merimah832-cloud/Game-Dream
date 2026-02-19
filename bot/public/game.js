@@ -217,10 +217,15 @@ class GameScene extends Phaser.Scene {
         g.fillStyle(0xffff00, 1); g.fillCircle(4, 4, 4);
         g.generateTexture('bullet', 8, 8); g.clear();
 
-        // Roof texture (reddish planks/tiles)
-        g.fillStyle(0x943126, 1); g.fillRect(0, 0, 64, 64);
-        g.lineStyle(2, 0x7b241c, 1); g.strokeRect(0, 0, 64, 64);
-        g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.strokePath();
+        // Roof (Green Shingles)
+        g.fillStyle(0x3E6B2B, 1); g.fillRect(0, 0, 64, 64);
+        g.lineStyle(2, 0x2D5120, 1);
+        for (let x = 0; x <= 64; x += 16) { g.moveTo(x, 0); g.lineTo(x, 64); }
+        for (let y = 0; y <= 64; y += 16) {
+            let offset = (y % 32 === 0) ? 0 : 8;
+            g.moveTo(0, y); g.lineTo(64, y);
+        }
+        g.strokePath();
         g.generateTexture('tex_roof', 64, 64); g.clear();
 
         // Floor texture (wooden)
@@ -260,6 +265,7 @@ class GameScene extends Phaser.Scene {
         this.drawGround();
         this.obstacles = this.physics.add.staticGroup();
         this.buildings = [];
+        this.bushes = this.physics.add.staticGroup(); // Initialize bushes group here
         this.generateMap();
 
         // Storm
@@ -273,14 +279,6 @@ class GameScene extends Phaser.Scene {
         // Loot
         this.lootItems = this.physics.add.group();
         this.spawnLoot();
-
-        // Bushes
-        this.bushes = this.physics.add.staticGroup();
-        for (let i = 0; i < 40; i++) {
-            const bx = Phaser.Math.Between(100, W - 100), by = Phaser.Math.Between(100, H - 100);
-            const b = this.bushes.create(bx, by, 'bush').setScale(Phaser.Math.FloatBetween(0.8, 1.3)).setDepth(15);
-            b.body.setSize(40, 40);
-        }
 
         // Bullets
         this.bullets = this.physics.add.group({ defaultKey: 'bullet' });
@@ -465,54 +463,20 @@ class GameScene extends Phaser.Scene {
     }
 
     generateMap() {
-        // Trees with outlines (like reference)
-        for (let i = 0; i < CFG.TREE_COUNT; i++) {
-            const x = Phaser.Math.Between(50, CFG.MAP - 50), y = Phaser.Math.Between(50, CFG.MAP - 50);
-            const r = Phaser.Math.Between(20, 38);
-            const g = this.add.graphics();
-            g.fillStyle(CFG.COLORS.TREE_OUTLINE, 1); g.fillCircle(0, 0, r + 3);
-            g.fillStyle(CFG.COLORS.TREE_FILL, 1); g.fillCircle(0, 0, r);
-            g.fillStyle(0x4A8B35, 0.6); g.fillCircle(-r * 0.2, -r * 0.2, r * 0.55);
-            g.setPosition(x, y).setDepth(25); // Trees above roofs
-            const zone = this.add.zone(x, y, r * 0.8, r * 0.8);
-            this.physics.add.existing(zone, true); this.obstacles.add(zone);
-        }
-        // Rocks
-        for (let i = 0; i < CFG.ROCK_COUNT; i++) {
-            const x = Phaser.Math.Between(50, CFG.MAP - 50), y = Phaser.Math.Between(50, CFG.MAP - 50);
-            const r = Phaser.Math.Between(16, 30);
-            const g = this.add.graphics();
-            g.fillStyle(CFG.COLORS.ROCK_OUTLINE, 1); g.fillCircle(0, 0, r + 2);
-            g.fillStyle(CFG.COLORS.ROCK, 1); g.fillCircle(0, 0, r);
-            g.fillStyle(CFG.COLORS.ROCK_LIGHT, 0.4); g.fillCircle(-r * 0.2, -r * 0.2, r * 0.45);
-            g.setPosition(x, y).setDepth(4);
-            const zone = this.add.zone(x, y, r * 1.4, r * 1.4);
-            this.physics.add.existing(zone, true); this.obstacles.add(zone);
-        }
-        // Buildings redesigned
+        // 1. Generate Buildings FIRST to know where NOT to put things
         for (let i = 0; i < CFG.BUILDING_COUNT; i++) {
-            const x = Phaser.Math.Between(150, CFG.MAP - 300), y = Phaser.Math.Between(150, CFG.MAP - 300);
+            const x = Phaser.Math.Between(150, CFG.MAP - 350), y = Phaser.Math.Between(150, CFG.MAP - 350);
             const w = 200, h = 200;
-
-            // 1. Floor (wooden)
-            this.add.tileSprite(x + w / 2, y + h / 2, w, h, 'tex_floor').setDepth(2);
-
-            // 2. Entrances (Stone Mats)
+            const floor = this.add.tileSprite(x + w / 2, y + h / 2, w, h, 'tex_floor').setDepth(2);
             this.add.sprite(x + w / 2, y, 'tex_stone').setDepth(1).setScale(1.5, 0.8);
             this.add.sprite(x + w / 2, y + h, 'tex_stone').setDepth(1).setScale(1.5, 0.8);
 
-            // 3. Walls (segments with doors)
-            const wt = 10;
-            const dW = 50;
-            const dOff = (w - dW) / 2;
+            const wt = 12, dW = 60, dOff = (w - dW) / 2;
             const wallColor = 0x5d4037;
             const segments = [
-                { rx: x, ry: y, rw: dOff, rh: wt },
-                { rx: x + dOff + dW, ry: y, rw: w - dOff - dW, rh: wt },
-                { rx: x, ry: y + h - wt, rw: dOff, rh: wt },
-                { rx: x + dOff + dW, ry: y + h - wt, rw: w - dOff - dW, rh: wt },
-                { rx: x, ry: y, rw: wt, rh: h },
-                { rx: x + w - wt, ry: y, rw: wt, rh: h },
+                { rx: x, ry: y, rw: dOff, rh: wt }, { rx: x + dOff + dW, ry: y, rw: w - dOff - dW, rh: wt },
+                { rx: x, ry: y + h - wt, rw: dOff, rh: wt }, { rx: x + dOff + dW, ry: y + h - wt, rw: w - dOff - dW, rh: wt },
+                { rx: x, ry: y, rw: wt, rh: h }, { rx: x + w - wt, ry: y, rw: wt, rh: h }
             ];
             segments.forEach(seg => {
                 const wg = this.add.graphics({ x: seg.rx, y: seg.ry }).setDepth(3);
@@ -521,10 +485,51 @@ class GameScene extends Phaser.Scene {
                 const zone = this.add.zone(seg.rx + seg.rw / 2, seg.ry + seg.rh / 2, seg.rw, seg.rh);
                 this.physics.add.existing(zone, true); this.obstacles.add(zone);
             });
-
-            // 4. Roof
-            const roof = this.add.tileSprite(x + w / 2, y + h / 2, w + 10, h + 10, 'tex_roof').setDepth(20);
+            const roof = this.add.tileSprite(x + w / 2, y + h / 2, w + 15, h + 15, 'tex_roof').setDepth(20);
             this.buildings.push({ x, y, w, h, roof });
+        }
+
+        const isInsideBuilding = (x, y, margin = 20) => {
+            return this.buildings.some(b => x > b.x - margin && x < b.x + b.w + margin && y > b.y - margin && y < b.y + b.h + margin);
+        };
+
+        // 2. Trees
+        for (let i = 0; i < CFG.TREE_COUNT; i++) {
+            let x, y;
+            let attempts = 0;
+            do {
+                x = Phaser.Math.Between(50, CFG.MAP - 50);
+                y = Phaser.Math.Between(50, CFG.MAP - 50);
+                attempts++;
+            } while (isInsideBuilding(x, y, 40) && attempts < 10);
+
+            const r = Phaser.Math.Between(20, 38);
+            const g = this.add.graphics().setPosition(x, y).setDepth(25);
+            g.fillStyle(CFG.COLORS.TREE_OUTLINE, 1); g.fillCircle(0, 0, r + 3);
+            g.fillStyle(CFG.COLORS.TREE_FILL, 1); g.fillCircle(0, 0, r);
+            g.fillStyle(0x4A8B35, 0.6); g.fillCircle(-r * 0.2, -r * 0.2, r * 0.55);
+            const zone = this.add.zone(x, y, r * 0.8, r * 0.8);
+            this.physics.add.existing(zone, true); this.obstacles.add(zone);
+        }
+
+        // 3. Rocks
+        for (let i = 0; i < CFG.ROCK_COUNT; i++) {
+            let x, y;
+            do { x = Phaser.Math.Between(50, CFG.MAP - 50); y = Phaser.Math.Between(50, CFG.MAP - 50); } while (isInsideBuilding(x, y, 30));
+            const r = Phaser.Math.Between(16, 30);
+            const g = this.add.graphics().setPosition(x, y).setDepth(4);
+            g.fillStyle(CFG.COLORS.ROCK_OUTLINE, 1); g.fillCircle(0, 0, r + 2);
+            g.fillStyle(CFG.COLORS.ROCK, 1); g.fillCircle(0, 0, r);
+            g.fillStyle(CFG.COLORS.ROCK_LIGHT, 0.4); g.fillCircle(-r * 0.2, -r * 0.2, r * 0.45);
+            const zone = this.add.zone(x, y, r * 1.4, r * 1.4);
+            this.physics.add.existing(zone, true); this.obstacles.add(zone);
+        }
+
+        // 4. Bushes
+        for (let i = 0; i < 40; i++) {
+            let x, y;
+            do { x = Phaser.Math.Between(100, CFG.MAP - 100); y = Phaser.Math.Between(100, CFG.MAP - 100); } while (isInsideBuilding(x, y, 30));
+            this.bushes.create(x, y, 'bush').setScale(Phaser.Math.FloatBetween(0.9, 1.2)).setDepth(15);
         }
     }
 
@@ -808,12 +813,15 @@ class GameScene extends Phaser.Scene {
         if (inBush) {
             this.myPlayer.setAlpha(0.1);
             this.myNameLabel.setAlpha(0);
+            this.myGun.setScale(1.6, 1.0); // Lengthen gun
+            this.myGun.setX(this.myPlayer.x + Math.cos(this.myPlayer.rotation) * 5);
+            this.myGun.setY(this.myPlayer.y + Math.sin(this.myPlayer.rotation) * 5);
         } else {
             this.myPlayer.setAlpha(1);
             this.myNameLabel.setAlpha(1);
+            this.myGun.setScale(1.0, 1.0);
+            this.myGun.setPosition(this.myPlayer.x, this.myPlayer.y);
         }
-        // Gun always fully visible
-        this.myGun.setAlpha(1);
 
         // Net sync
         if (time - lastSyncTime > CFG.NET_SYNC_RATE) {
