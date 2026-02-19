@@ -10,10 +10,10 @@ const CFG = {
     PLAYER_HP: 100,
     BULLET_SPEED: 700,
     BULLET_DAMAGE: 20,
-    STORM_START_DELAY: 45000,   // ms before storm starts shrinking
-    STORM_SHRINK_RATE: 0.15,    // units per ms
-    STORM_DAMAGE: 1,            // hp per tick
-    STORM_TICK: 500,            // ms between damage ticks
+    STORM_START_DELAY: 45000,
+    STORM_SHRINK_RATE: 0.15,
+    STORM_DAMAGE: 1,
+    STORM_TICK: 500,
     LOOT_COUNT: 80,
     TREE_COUNT: 150,
     ROCK_COUNT: 60,
@@ -21,13 +21,10 @@ const CFG = {
     COLORS: {
         GRASS: 0x4a7c59,
         GRASS2: 0x3d6b4a,
-        ROAD: 0x8a8a7a,
         TREE: 0x2d5a27,
         ROCK: 0x7a7a7a,
         BUILDING: 0xc8b89a,
         ROOF: 0x8b6f47,
-        WATER: 0x2980b9,
-        STORM: 0x9b59b6,
         LOOT_GUN: 0xf39c12,
         LOOT_MED: 0xe74c3c,
         LOOT_AMMO: 0x3498db,
@@ -49,7 +46,7 @@ let myWeapon = { ...WEAPONS.pistol, currentAmmo: WEAPONS.pistol.ammo };
 let lastFired = 0;
 let isGameOver = false;
 let stormRadius;
-let stormX, stormY;
+let stormCenterX, stormCenterY;
 let stormActive = false;
 let stormTimer = CFG.STORM_START_DELAY;
 let networkPlayers = new Map();
@@ -62,16 +59,62 @@ class GameScene extends Phaser.Scene {
     constructor() { super({ key: 'GameScene' }); }
 
     preload() {
-        // No assets needed — all drawn with graphics
+        // Generate a simple circle texture for player
+        const g = this.make.graphics({ x: 0, y: 0, add: false });
+        // Player texture (blue)
+        g.fillStyle(0x3498db, 1);
+        g.fillCircle(16, 16, 14);
+        g.fillStyle(0xffffff, 0.3);
+        g.fillCircle(12, 12, 5);
+        g.fillStyle(0x333333, 1);
+        g.fillRect(26, 13, 12, 6);
+        g.generateTexture('player_blue', 40, 32);
+        g.clear();
+
+        // Enemy texture (red)
+        g.fillStyle(0xe74c3c, 1);
+        g.fillCircle(16, 16, 14);
+        g.fillStyle(0xffffff, 0.3);
+        g.fillCircle(12, 12, 5);
+        g.fillStyle(0x333333, 1);
+        g.fillRect(26, 13, 12, 6);
+        g.generateTexture('player_red', 40, 32);
+        g.clear();
+
+        // Bullet texture
+        g.fillStyle(0xffff00, 1);
+        g.fillCircle(4, 4, 4);
+        g.generateTexture('bullet', 8, 8);
+        g.clear();
+
+        // Loot textures
+        g.fillStyle(CFG.COLORS.LOOT_GUN, 1);
+        g.fillRoundedRect(0, 0, 18, 18, 3);
+        g.lineStyle(1, 0xffffff, 0.6);
+        g.strokeRoundedRect(0, 0, 18, 18, 3);
+        g.generateTexture('loot_gun', 18, 18);
+        g.clear();
+
+        g.fillStyle(CFG.COLORS.LOOT_MED, 1);
+        g.fillRoundedRect(0, 0, 18, 18, 3);
+        g.lineStyle(1, 0xffffff, 0.6);
+        g.strokeRoundedRect(0, 0, 18, 18, 3);
+        g.generateTexture('loot_med', 18, 18);
+        g.clear();
+
+        g.fillStyle(CFG.COLORS.LOOT_AMMO, 1);
+        g.fillRoundedRect(0, 0, 18, 18, 3);
+        g.lineStyle(1, 0xffffff, 0.6);
+        g.strokeRoundedRect(0, 0, 18, 18, 3);
+        g.generateTexture('loot_ammo', 18, 18);
+        g.destroy();
     }
 
     create() {
         const W = CFG.MAP, H = CFG.MAP;
+        this.physics.world.setBounds(0, 0, W, H);
 
-        // --- WORLD LAYERS ---
-        this.worldLayer = this.add.container(0, 0);
-
-        // Ground tiles
+        // Ground
         this.drawGround();
 
         // Map objects
@@ -79,25 +122,33 @@ class GameScene extends Phaser.Scene {
         this.buildings = [];
         this.generateMap();
 
-        // Storm graphics
+        // Storm
         this.stormGraphics = this.add.graphics();
         this.stormGraphics.setDepth(50);
-        stormX = W / 2; stormY = H / 2;
+        stormCenterX = W / 2;
+        stormCenterY = H / 2;
         stormRadius = W * 0.7;
 
-        // Loot group
+        // Loot
         this.lootItems = this.physics.add.staticGroup();
         this.spawnLoot();
 
         // Bullets
-        this.bullets = this.physics.add.group();
-        this.enemyBullets = this.physics.add.group();
+        this.bullets = this.physics.add.group({ defaultKey: 'bullet' });
+        this.enemyBullets = this.physics.add.group({ defaultKey: 'bullet' });
 
-        // --- MY PLAYER ---
+        // --- PLAYER ---
         const spawnX = Phaser.Math.Between(200, W - 200);
         const spawnY = Phaser.Math.Between(200, H - 200);
-        this.myPlayer = this.createPlayerSprite(spawnX, spawnY, 0x3498db, true);
+        this.myPlayer = this.physics.add.sprite(spawnX, spawnY, 'player_blue');
         this.myPlayer.setDepth(10);
+        this.myPlayer.setCircle(14, 3, 3);
+        this.myPlayer.setCollideWorldBounds(true);
+
+        this.myNameLabel = this.add.text(spawnX, spawnY - 25, 'Вы', {
+            fontSize: '11px', color: '#ffffff',
+            stroke: '#000000', strokeThickness: 3
+        }).setOrigin(0.5).setDepth(15);
 
         // Camera
         this.cameras.main.setBounds(0, 0, W, H);
@@ -118,10 +169,11 @@ class GameScene extends Phaser.Scene {
         // Collisions
         this.physics.add.collider(this.myPlayer, this.obstacles);
         this.physics.add.overlap(this.myPlayer, this.lootItems, this.pickupLoot, null, this);
-        this.physics.add.overlap(this.bullets, this.obstacles, (b) => b.destroy());
+        this.physics.add.overlap(this.bullets, this.obstacles, (bullet, obs) => { bullet.destroy(); });
         this.physics.add.overlap(this.enemyBullets, this.myPlayer, (player, bullet) => {
+            const dmg = bullet.getData('damage') || CFG.BULLET_DAMAGE;
             bullet.destroy();
-            this.takeDamage(bullet.damage || CFG.BULLET_DAMAGE);
+            this.takeDamage(dmg);
         });
 
         // Storm damage timer
@@ -132,26 +184,26 @@ class GameScene extends Phaser.Scene {
             callbackScope: this
         });
 
-        // Init Playroom
+        // Init multiplayer
         this.initPlayroom();
 
-        // Hide loading screen
+        // Hide loading
         document.getElementById('loading').style.display = 'none';
+        console.log('Game Dream: Scene created!');
     }
 
     // ---- GROUND ----
     drawGround() {
         const g = this.add.graphics();
         g.setDepth(-10);
-        const tileSize = CFG.TILE;
-        for (let x = 0; x < CFG.MAP; x += tileSize) {
-            for (let y = 0; y < CFG.MAP; y += tileSize) {
-                const color = ((x + y) / tileSize) % 2 === 0 ? CFG.COLORS.GRASS : CFG.COLORS.GRASS2;
-                g.fillStyle(color, 1);
-                g.fillRect(x, y, tileSize, tileSize);
+        const ts = CFG.TILE;
+        for (let x = 0; x < CFG.MAP; x += ts) {
+            for (let y = 0; y < CFG.MAP; y += ts) {
+                const c = ((x + y) / ts) % 2 === 0 ? CFG.COLORS.GRASS : CFG.COLORS.GRASS2;
+                g.fillStyle(c, 1);
+                g.fillRect(x, y, ts, ts);
             }
         }
-        // Border
         g.lineStyle(6, 0x000000, 0.5);
         g.strokeRect(0, 0, CFG.MAP, CFG.MAP);
     }
@@ -163,18 +215,18 @@ class GameScene extends Phaser.Scene {
             const x = Phaser.Math.Between(50, CFG.MAP - 50);
             const y = Phaser.Math.Between(50, CFG.MAP - 50);
             const r = Phaser.Math.Between(15, 30);
+
             const g = this.add.graphics();
             g.fillStyle(CFG.COLORS.TREE, 1);
-            g.fillCircle(x, y, r);
+            g.fillCircle(0, 0, r);
             g.fillStyle(0x1a3d15, 0.5);
-            g.fillCircle(x - 4, y - 4, r * 0.6);
+            g.fillCircle(-4, -4, r * 0.6);
+            g.setPosition(x, y);
             g.setDepth(5);
 
-            const body = this.obstacles.create(x, y, null);
-            body.setCircle(r * 0.7);
-            body.setOffset(-r * 0.7, -r * 0.7);
-            body.setVisible(false);
-            body.refreshBody();
+            const zone = this.add.zone(x, y, r * 1.4, r * 1.4);
+            this.physics.add.existing(zone, true);
+            this.obstacles.add(zone);
         }
 
         // Rocks
@@ -183,18 +235,18 @@ class GameScene extends Phaser.Scene {
             const y = Phaser.Math.Between(50, CFG.MAP - 50);
             const w = Phaser.Math.Between(25, 50);
             const h = Phaser.Math.Between(20, 40);
+
             const g = this.add.graphics();
             g.fillStyle(CFG.COLORS.ROCK, 1);
-            g.fillEllipse(x, y, w, h);
+            g.fillEllipse(0, 0, w, h);
             g.fillStyle(0x999999, 0.4);
-            g.fillEllipse(x - 4, y - 4, w * 0.5, h * 0.5);
+            g.fillEllipse(-4, -4, w * 0.5, h * 0.5);
+            g.setPosition(x, y);
             g.setDepth(4);
 
-            const body = this.obstacles.create(x, y, null);
-            body.setSize(w * 0.8, h * 0.8);
-            body.setOffset(-w * 0.4, -h * 0.4);
-            body.setVisible(false);
-            body.refreshBody();
+            const zone = this.add.zone(x, y, w * 0.8, h * 0.8);
+            this.physics.add.existing(zone, true);
+            this.obstacles.add(zone);
         }
 
         // Buildings
@@ -204,7 +256,6 @@ class GameScene extends Phaser.Scene {
             const w = Phaser.Math.Between(80, 160);
             const h = Phaser.Math.Between(80, 140);
 
-            // Floor
             const floor = this.add.graphics();
             floor.fillStyle(CFG.COLORS.BUILDING, 1);
             floor.fillRect(x, y, w, h);
@@ -212,66 +263,32 @@ class GameScene extends Phaser.Scene {
             floor.strokeRect(x, y, w, h);
             floor.setDepth(2);
 
-            // Roof (fades when player inside)
             const roof = this.add.graphics();
             roof.fillStyle(CFG.COLORS.ROOF, 0.9);
             roof.fillRect(x + 4, y + 4, w - 8, h - 8);
             roof.setDepth(8);
             this.buildings.push({ x, y, w, h, roof });
 
-            // Walls as obstacles (4 sides, open door)
-            const wallThick = 8;
-            const walls = [
-                [x, y, w, wallThick],           // top
-                [x, y + h - wallThick, w, wallThick], // bottom
-                [x, y, wallThick, h],            // left
-                [x + w - wallThick, y, wallThick, h], // right
+            // Walls (with a door opening on the bottom side)
+            const wt = 8;
+            const doorW = 30;
+            const doorOffset = Math.floor((w - doorW) / 2);
+            const wallDefs = [
+                { rx: x, ry: y, rw: w, rh: wt },                       // top
+                { rx: x, ry: y + h - wt, rw: doorOffset, rh: wt },     // bottom-left
+                { rx: x + doorOffset + doorW, ry: y + h - wt, rw: w - doorOffset - doorW, rh: wt }, // bottom-right
+                { rx: x, ry: y, rw: wt, rh: h },                       // left
+                { rx: x + w - wt, ry: y, rw: wt, rh: h },              // right
             ];
-            walls.forEach(([wx, wy, ww, wh]) => {
-                const b = this.obstacles.create(wx + ww / 2, wy + wh / 2, null);
-                b.setSize(ww, wh);
-                b.setVisible(false);
-                b.refreshBody();
+            wallDefs.forEach(({ rx, ry, rw, rh }) => {
+                const zone = this.add.zone(rx + rw / 2, ry + rh / 2, rw, rh);
+                this.physics.add.existing(zone, true);
+                this.obstacles.add(zone);
             });
         }
     }
 
-    // ---- PLAYER SPRITE ----
-    createPlayerSprite(x, y, color, isMe) {
-        const g = this.add.graphics();
-        // Shadow
-        g.fillStyle(0x000000, 0.3);
-        g.fillEllipse(3, 3, 28, 28);
-        // Body
-        g.fillStyle(color, 1);
-        g.fillCircle(0, 0, 14);
-        // Highlight
-        g.fillStyle(0xffffff, 0.3);
-        g.fillCircle(-4, -4, 5);
-        // Gun barrel indicator
-        g.fillStyle(0x333333, 1);
-        g.fillRect(10, -3, 14, 6);
-
-        const rt = this.add.renderTexture(x, y, 60, 60);
-        rt.draw(g, 30, 30);
-        g.destroy();
-
-        this.physics.add.existing(rt);
-        rt.body.setCircle(14, 16, 16);
-        rt.body.setCollideWorldBounds(true);
-
-        // Name label
-        if (isMe) {
-            this.myNameLabel = this.add.text(x, y - 25, 'Вы', {
-                fontSize: '11px', color: '#ffffff',
-                stroke: '#000000', strokeThickness: 3
-            }).setOrigin(0.5).setDepth(15);
-        }
-
-        return rt;
-    }
-
-    // ---- LOOT SPAWNING ----
+    // ---- LOOT ----
     spawnLoot() {
         const types = ['pistol', 'shotgun', 'rifle', 'sniper', 'medkit', 'armor', 'ammo'];
         const weights = [30, 15, 20, 5, 15, 10, 5];
@@ -281,30 +298,19 @@ class GameScene extends Phaser.Scene {
             const y = Phaser.Math.Between(80, CFG.MAP - 80);
             const type = this.weightedRandom(types, weights);
 
-            let color;
-            if (type === 'medkit') color = CFG.COLORS.LOOT_MED;
-            else if (type === 'ammo') color = CFG.COLORS.LOOT_AMMO;
-            else color = CFG.COLORS.LOOT_GUN;
+            let texKey = 'loot_gun';
+            if (type === 'medkit') texKey = 'loot_med';
+            else if (type === 'ammo' || type === 'armor') texKey = 'loot_ammo';
 
-            const g = this.add.graphics();
-            g.fillStyle(color, 1);
-            g.fillRoundedRect(-10, -10, 20, 20, 4);
-            g.lineStyle(2, 0xffffff, 0.6);
-            g.strokeRoundedRect(-10, -10, 20, 20, 4);
-            g.setDepth(3);
-
-            const item = this.lootItems.create(x, y, null);
-            item.setSize(24, 24);
-            item.setOffset(-12, -12);
-            item.setVisible(false);
-            item.lootType = type;
-            item.lootGraphic = g;
+            const item = this.lootItems.create(x, y, texKey);
+            item.setDepth(3);
+            item.setData('lootType', type);
             item.refreshBody();
 
-            // Pulse animation
+            // Pulse
             this.tweens.add({
-                targets: g,
-                scaleX: 1.15, scaleY: 1.15,
+                targets: item,
+                scaleX: 1.2, scaleY: 1.2,
                 duration: 800,
                 yoyo: true,
                 repeat: -1,
@@ -323,10 +329,8 @@ class GameScene extends Phaser.Scene {
         return items[0];
     }
 
-    // ---- PICKUP LOOT ----
     pickupLoot(player, item) {
-        const type = item.lootType;
-        if (item.lootGraphic) item.lootGraphic.destroy();
+        const type = item.getData('lootType');
         item.destroy();
 
         if (type === 'medkit') {
@@ -340,12 +344,12 @@ class GameScene extends Phaser.Scene {
             this.showFloatingText(player.x, player.y, '+30 Патроны', '#f39c12');
         } else if (WEAPONS[type]) {
             myWeapon = { ...WEAPONS[type], currentAmmo: WEAPONS[type].ammo };
-            this.showFloatingText(player.x, player.y, `🔫 ${WEAPONS[type].name}`, '#ffffff');
+            this.showFloatingText(player.x, player.y, '🔫 ' + WEAPONS[type].name, '#ffffff');
         }
         this.updateHUD();
     }
 
-    // ---- SHOOTING ----
+    // ---- SHOOT ----
     shoot(ptr) {
         if (isGameOver) return;
         const now = this.time.now;
@@ -354,51 +358,38 @@ class GameScene extends Phaser.Scene {
             this.showFloatingText(this.myPlayer.x, this.myPlayer.y, 'Нет патронов!', '#e74c3c');
             return;
         }
-
         lastFired = now;
         myWeapon.currentAmmo--;
 
         const worldPtr = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
-        const angle = Phaser.Math.Angle.Between(
-            this.myPlayer.x, this.myPlayer.y,
-            worldPtr.x, worldPtr.y
-        );
+        const angle = Phaser.Math.Angle.Between(this.myPlayer.x, this.myPlayer.y, worldPtr.x, worldPtr.y);
 
-        // Shotgun fires multiple pellets
-        const pellets = myWeapon === WEAPONS.shotgun ? 5 : 1;
+        const pellets = (myWeapon.name === 'Дробовик') ? 5 : 1;
         for (let i = 0; i < pellets; i++) {
             const spread = pellets > 1 ? Phaser.Math.DegToRad(Phaser.Math.Between(-15, 15)) : 0;
             this.fireBullet(this.myPlayer.x, this.myPlayer.y, angle + spread, myWeapon);
         }
 
-        // Muzzle flash
         this.cameras.main.shake(50, 0.003);
         this.updateHUD();
 
-        // Sync to network
+        // Network sync
         if (playroomReady) {
             try {
                 const me = Playroom.myPlayer();
-                if (me) me.setState('shoot', { x: this.myPlayer.x, y: this.myPlayer.y, angle, weapon: Object.keys(WEAPONS).find(k => WEAPONS[k] === myWeapon) || 'pistol', t: now });
+                if (me) me.setState('shoot', {
+                    x: this.myPlayer.x, y: this.myPlayer.y,
+                    angle, t: now
+                });
             } catch (e) { }
         }
     }
 
     fireBullet(x, y, angle, weapon) {
-        const g = this.add.graphics();
-        g.fillStyle(weapon.color || 0xffff00, 1);
-        g.fillCircle(0, 0, 4);
-        g.setDepth(20);
-
-        const bullet = this.bullets.create(x, y, null);
-        bullet.setSize(8, 8);
-        bullet.setOffset(-4, -4);
-        bullet.setVisible(false);
-        bullet.damage = weapon.damage;
-        bullet.bulletGraphic = g;
-        bullet.range = weapon.range || 500;
-        bullet.startX = x;
-        bullet.startY = y;
+        const bullet = this.bullets.create(x, y, 'bullet');
+        bullet.setDepth(20);
+        bullet.setData('damage', weapon.damage);
+        bullet.setCircle(4);
 
         this.physics.velocityFromAngle(
             Phaser.Math.RadToDeg(angle),
@@ -406,12 +397,10 @@ class GameScene extends Phaser.Scene {
             bullet.body.velocity
         );
 
-        // Auto-destroy after range
-        this.time.delayedCall(bullet.range / (weapon.bulletSpeed || CFG.BULLET_SPEED) * 1000, () => {
-            if (bullet && bullet.active) {
-                if (bullet.bulletGraphic) bullet.bulletGraphic.destroy();
-                bullet.destroy();
-            }
+        // Destroy after max range time
+        const lifeMs = (weapon.range || 500) / (weapon.bulletSpeed || CFG.BULLET_SPEED) * 1000;
+        this.time.delayedCall(lifeMs, () => {
+            if (bullet && bullet.active) bullet.destroy();
         });
     }
 
@@ -427,7 +416,6 @@ class GameScene extends Phaser.Scene {
         myHp = Math.max(0, myHp - dmg);
         this.updateHUD();
         this.cameras.main.shake(100, 0.01);
-
         if (myHp <= 0) this.die();
     }
 
@@ -452,43 +440,48 @@ class GameScene extends Phaser.Scene {
             stormRadius = Math.max(50, stormRadius - CFG.STORM_SHRINK_RATE * delta);
         } else {
             stormTimer -= delta;
-            if (stormTimer <= 0) {
-                stormActive = true;
-            }
+            if (stormTimer <= 0) stormActive = true;
             const secs = Math.max(0, Math.ceil(stormTimer / 1000));
-            document.getElementById('storm-info').textContent = `☁️ Шторм через ${secs}с`;
+            document.getElementById('storm-info').textContent = '☁️ Шторм через ' + secs + 'с';
         }
 
         if (stormActive) {
-            document.getElementById('storm-info').textContent = `⚡ Шторм сжимается!`;
+            document.getElementById('storm-info').textContent = '⚡ Шторм сжимается!';
         }
 
-        // Draw storm
+        // Draw storm overlay using a mask approach:
+        // Draw a full-map purple overlay, then use a separate circle shape 
+        // We'll use the simple approach: redraw every frame
         this.stormGraphics.clear();
-        // Dark overlay outside circle
-        this.stormGraphics.fillStyle(0x4a0080, 0.45);
-        this.stormGraphics.fillRect(0, 0, CFG.MAP, CFG.MAP);
-        // Clear inside (safe zone)
-        this.stormGraphics.fillStyle(0x000000, 0);
-        // Use blend mode to "cut out" safe zone — draw safe zone as lighter
-        this.stormGraphics.fillStyle(0x4a0080, 0);
-        this.stormGraphics.fillCircle(stormX, stormY, stormRadius);
 
-        // Storm border
+        // Purple overlay over the entire map
+        this.stormGraphics.fillStyle(0x4a0080, 0.4);
+        // We draw 4 rects around the safe circle to simulate the storm zone
+        // This is a simpler, more reliable method than blend modes
+        // Top rect
+        this.stormGraphics.fillRect(0, 0, CFG.MAP, Math.max(0, stormCenterY - stormRadius));
+        // Bottom rect
+        this.stormGraphics.fillRect(0, stormCenterY + stormRadius, CFG.MAP, CFG.MAP - (stormCenterY + stormRadius));
+        // Left rect (between top and bottom)
+        this.stormGraphics.fillRect(0, Math.max(0, stormCenterY - stormRadius), Math.max(0, stormCenterX - stormRadius), stormRadius * 2);
+        // Right rect
+        this.stormGraphics.fillRect(stormCenterX + stormRadius, Math.max(0, stormCenterY - stormRadius), CFG.MAP - (stormCenterX + stormRadius), stormRadius * 2);
+
+        // Storm border circle
         this.stormGraphics.lineStyle(4, 0x9b59b6, 0.9);
-        this.stormGraphics.strokeCircle(stormX, stormY, stormRadius);
+        this.stormGraphics.strokeCircle(stormCenterX, stormCenterY, stormRadius);
     }
 
     applyStormDamage() {
         if (!stormActive || isGameOver) return;
-        const dist = Phaser.Math.Distance.Between(this.myPlayer.x, this.myPlayer.y, stormX, stormY);
+        const dist = Phaser.Math.Distance.Between(this.myPlayer.x, this.myPlayer.y, stormCenterX, stormCenterY);
         if (dist > stormRadius) {
             this.takeDamage(CFG.STORM_DAMAGE * 5);
             this.showFloatingText(this.myPlayer.x, this.myPlayer.y - 20, '⚡ Шторм!', '#9b59b6');
         }
     }
 
-    // ---- BUILDING ROOF FADE ----
+    // ---- ROOF FADE ----
     updateRoofs() {
         this.buildings.forEach(b => {
             const inside = this.myPlayer.x > b.x && this.myPlayer.x < b.x + b.w &&
@@ -497,8 +490,12 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    // ---- PLAYROOM INIT ----
+    // ---- PLAYROOM ----
     async initPlayroom() {
+        if (typeof Playroom === 'undefined') {
+            console.warn('Playroom SDK not loaded, running in solo mode.');
+            return;
+        }
         try {
             await Playroom.insertCoin({
                 gameId: 'game-dream-br',
@@ -510,11 +507,10 @@ class GameScene extends Phaser.Scene {
                 const id = state.id;
                 if (id === Playroom.myPlayer()?.id) return;
 
-                // Create enemy sprite
-                const enemy = this.createPlayerSprite(
+                const enemy = this.physics.add.sprite(
                     Phaser.Math.Between(200, CFG.MAP - 200),
                     Phaser.Math.Between(200, CFG.MAP - 200),
-                    0xe74c3c, false
+                    'player_red'
                 );
                 enemy.setDepth(9);
 
@@ -526,7 +522,6 @@ class GameScene extends Phaser.Scene {
                 networkPlayers.set(id, { sprite: enemy, label: nameLabel, state });
                 this.updatePlayerCount();
 
-                // Watch enemy state
                 state.onQuit(() => {
                     const p = networkPlayers.get(id);
                     if (p) { p.sprite.destroy(); p.label.destroy(); }
@@ -545,21 +540,21 @@ class GameScene extends Phaser.Scene {
 
     updatePlayerCount() {
         const count = networkPlayers.size + 1;
-        document.getElementById('player-count').textContent = `👥 ${count} игрок${count === 1 ? '' : 'ов'}`;
+        document.getElementById('player-count').textContent = '👥 ' + count + ' игрок' + (count === 1 ? '' : 'ов');
     }
 
     // ---- HUD ----
     updateHUD() {
-        document.getElementById('hp-bar').style.width = `${myHp}%`;
-        document.getElementById('armor-bar').style.width = `${myArmor}%`;
+        document.getElementById('hp-bar').style.width = myHp + '%';
+        document.getElementById('armor-bar').style.width = myArmor + '%';
         document.getElementById('weapon-info').textContent =
-            `🔫 ${myWeapon.name} | ${myWeapon.currentAmmo}/${myWeapon.maxAmmo}`;
+            '🔫 ' + myWeapon.name + ' | ' + myWeapon.currentAmmo + '/' + myWeapon.maxAmmo;
     }
 
     // ---- FLOATING TEXT ----
     showFloatingText(x, y, text, color) {
         const t = this.add.text(x, y, text, {
-            fontSize: '14px', color,
+            fontSize: '14px', color: color,
             stroke: '#000', strokeThickness: 3
         }).setOrigin(0.5).setDepth(100);
 
@@ -573,47 +568,32 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    // ---- MAIN UPDATE LOOP ----
+    // ---- MAIN LOOP ----
     update(time, delta) {
         if (isGameOver) return;
 
         // Movement
         const speed = CFG.PLAYER_SPEED;
         let vx = 0, vy = 0;
-
         if (this.cursors.left.isDown || this.wasd.left.isDown) vx = -speed;
         if (this.cursors.right.isDown || this.wasd.right.isDown) vx = speed;
         if (this.cursors.up.isDown || this.wasd.up.isDown) vy = -speed;
         if (this.cursors.down.isDown || this.wasd.down.isDown) vy = speed;
-
-        // Normalize diagonal
         if (vx !== 0 && vy !== 0) { vx *= 0.707; vy *= 0.707; }
-
         this.myPlayer.body.setVelocity(vx, vy);
 
-        // Rotate player toward mouse
+        // Rotate toward mouse
         const ptr = this.input.activePointer;
         const worldPtr = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
-        const angle = Phaser.Math.Angle.Between(
-            this.myPlayer.x, this.myPlayer.y,
-            worldPtr.x, worldPtr.y
-        );
+        const angle = Phaser.Math.Angle.Between(this.myPlayer.x, this.myPlayer.y, worldPtr.x, worldPtr.y);
         this.myPlayer.setRotation(angle);
 
-        // Update name label
+        // Name label follow
         if (this.myNameLabel) {
             this.myNameLabel.setPosition(this.myPlayer.x, this.myPlayer.y - 25);
         }
 
-        // Update bullet graphics
-        this.bullets.getChildren().forEach(b => {
-            if (b.bulletGraphic) b.bulletGraphic.setPosition(b.x, b.y);
-        });
-        this.enemyBullets.getChildren().forEach(b => {
-            if (b.bulletGraphic) b.bulletGraphic.setPosition(b.x, b.y);
-        });
-
-        // Sync my position to Playroom
+        // Playroom sync
         if (playroomReady && time % 50 < delta) {
             try {
                 const me = Playroom.myPlayer();
@@ -625,8 +605,8 @@ class GameScene extends Phaser.Scene {
             } catch (e) { }
         }
 
-        // Update enemy positions from Playroom
-        networkPlayers.forEach((p, id) => {
+        // Update enemies from network
+        networkPlayers.forEach((p) => {
             try {
                 const pos = p.state.getState('pos');
                 const rot = p.state.getState('rot');
@@ -635,14 +615,14 @@ class GameScene extends Phaser.Scene {
                     p.sprite.y = Phaser.Math.Linear(p.sprite.y, pos.y, 0.2);
                     p.label.setPosition(p.sprite.x, p.sprite.y - 25);
                 }
-                if (rot !== null && rot !== undefined) p.sprite.setRotation(rot);
+                if (rot != null) p.sprite.setRotation(rot);
             } catch (e) { }
         });
 
         // Storm
         this.updateStorm(delta);
 
-        // Roof fade
+        // Roofs
         this.updateRoofs();
 
         // Reload
@@ -652,7 +632,7 @@ class GameScene extends Phaser.Scene {
             this.updateHUD();
         }
 
-        // Check win
+        // Win check
         this.checkWin();
     }
 
@@ -696,5 +676,6 @@ const config = {
 };
 
 window.addEventListener('load', () => {
+    console.log('Game Dream: Starting Phaser...');
     new Phaser.Game(config);
 });
