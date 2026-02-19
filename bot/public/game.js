@@ -502,7 +502,9 @@ class GameScene extends Phaser.Scene {
             const mat2 = this.add.sprite(x + w / 2, y + h, 'tex_stone').setDepth(1).setScale(1.5, 0.8);
 
             // 3. Walls (segments with doors)
-            const wt = 10; doorW = 50; doorOff = (w - doorW) / 2;
+            const wt = 10;
+            const doorW = 50;
+            const doorOff = (w - doorW) / 2;
             const wallColor = 0x5d4037;
             const segments = [
                 { rx: x, ry: y, rw: doorOff, rh: wt }, // Top left
@@ -794,12 +796,14 @@ class GameScene extends Phaser.Scene {
 
         // Hide in bushes logic
         let inBush = false;
-        this.physics.overlap(this.myPlayer, this.bushes, () => {
-            const dist = Phaser.Math.Distance.Between(this.myPlayer.x, this.myPlayer.y,
-                this.physics.closest(this.myPlayer, this.bushes.getChildren()).x,
-                this.physics.closest(this.myPlayer, this.bushes.getChildren()).y);
-            if (dist < 30) inBush = true;
-        });
+        if (this.myPlayer && this.bushes) {
+            this.physics.overlap(this.myPlayer, this.bushes, () => {
+                const closest = this.physics.closest(this.myPlayer, this.bushes.getChildren());
+                if (closest && Phaser.Math.Distance.Between(this.myPlayer.x, this.myPlayer.y, closest.x, closest.y) < 32) {
+                    inBush = true;
+                }
+            });
+        }
 
         if (inBush) {
             this.myPlayer.setAlpha(0.1);
