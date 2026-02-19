@@ -33,8 +33,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- DATABASE ---
 const db = new sqlite3.Database('./stats.db');
 db.serialize(() => {
-    db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, wins INTEGER DEFAULT 0)");
+    db.run("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT, wins INTEGER DEFAULT 0)");
 });
+db.on('error', (err) => console.error('DB error (non-fatal):', err.message));
 
 // --- TELEGRAM BOT ---
 const bot = new Telegraf(BOT_TOKEN);
@@ -128,12 +129,16 @@ bot.command('stats', (ctx) => {
 // --- WIN REPORTING API ---
 app.post('/api/report-win', (req, res) => {
     const { chatId, winnerName, winnerId } = req.body;
-    db.run(
-        "INSERT INTO users (id, username, wins) VALUES (?, ?, 1) ON CONFLICT(id) DO UPDATE SET wins = wins + 1, username = excluded.username",
-        [winnerId, winnerName]
-    );
+    try {
+        db.run(
+            "INSERT INTO users (id, username, wins) VALUES (?, ?, 1) ON CONFLICT(id) DO UPDATE SET wins = wins + 1, username = excluded.username",
+            [String(winnerId), String(winnerName)],
+            (err) => { if (err) console.error('DB write error:', err.message); }
+        );
+    } catch (e) { console.error('DB exception:', e.message); }
     if (chatId) {
-        bot.telegram.sendMessage(chatId, `🎉 ПОБЕДА! ${winnerName} оказался последним выжившим! Статистика обновлена.`);
+        bot.telegram.sendMessage(chatId, `🎉 ПОБЕДА! ${winnerName} оказался последним выжившим! Статистика обновлена.`)
+            .catch(e => console.error('TG send error:', e.message));
     }
     res.json({ success: true });
 });
