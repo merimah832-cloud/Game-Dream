@@ -10,7 +10,7 @@ const path = require('path');
 // --- CONFIG ---
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 3000;
-const GAME_URL = process.env.GAME_URL || `http://localhost:${PORT}`;
+const GAME_URL = process.env.GAME_URL || 'https://api.znak.pics';
 
 if (!BOT_TOKEN) {
     console.error("ERROR: BOT_TOKEN is not defined in .env file");
@@ -63,7 +63,7 @@ bot.command('join', (ctx) => {
     const lobby = lobbies.get(chatId);
 
     if (!lobby || !lobby.active) {
-        return ctx.reply('Нет активного набора. Начни его командой /challenge.');
+        return ctx.reply('Набор уже окончен или не начинался! Начни новый через /challenge.');
     }
     if (lobby.players.find(p => p.id === user.id)) {
         return ctx.reply('Ты уже в деле!');
@@ -78,11 +78,9 @@ bot.command('join', (ctx) => {
 
     if (lobby.players.length === 8) {
         const gameLink = `${GAME_URL}/game.html?room=${chatId}`;
-        msg += `\n\n🎯 ОТРЯД СОБРАН! Нажми кнопку ниже!`;
+        msg += `\n\n🎯 ОТРЯД СОБРАН! Все в бой:\n${gameLink}`;
         lobby.active = false;
-        ctx.reply(msg, {
-            reply_markup: { inline_keyboard: [[{ text: '🎮 В БОЙ!', web_app: { url: gameLink } }]] }
-        });
+        ctx.reply(msg);
     } else {
         msg += `\n\n💡 Готовы начать? Пишите /go`;
         ctx.reply(msg);
@@ -103,8 +101,8 @@ bot.command('go', (ctx) => {
     lobby.active = false;
     ctx.reply(
         `🎯 НАЧИНАЕМ С ${lobby.players.length} ИГРОКАМИ!\n\n` +
-        `👥 Состав:\n${playerList}`,
-        { reply_markup: { inline_keyboard: [[{ text: '🎮 В БОЙ!', web_app: { url: gameLink } }]] } }
+        `👥 Состав:\n${playerList}\n\n` +
+        `🔗 Ссылка на игру:\n${gameLink}`
     );
 });
 

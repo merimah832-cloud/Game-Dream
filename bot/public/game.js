@@ -63,6 +63,24 @@ let isReloading = false;
 const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 window.onerror = (m, u, l) => alert(`JS Error: ${m} at line ${l}`);
 
+// --- TELEGRAM MINI APP INIT ---
+const tgApp = window.Telegram && window.Telegram.WebApp;
+if (tgApp) {
+    tgApp.ready();              // Signal that the app is ready
+    tgApp.expand();             // Expand to full screen height
+    tgApp.disableVerticalSwipes && tgApp.disableVerticalSwipes(); // Prevent swipe-to-close
+    // Set header/background colors to match game
+    try {
+        tgApp.setHeaderColor('#1a1a1a');
+        tgApp.setBackgroundColor('#6B8E4E');
+    } catch (e) { /* older API versions may not support this */ }
+    // Fix viewport height for Telegram Mini App
+    document.documentElement.style.height = '100vh';
+    document.body.style.height = '100vh';
+    document.body.style.overflow = 'hidden';
+    console.log('Telegram Mini App initialized, platform:', tgApp.platform);
+}
+
 // --- TOUCH STATE ---
 const touchMove = { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0 };
 const touchAim = { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0, angle: 0 };
@@ -74,9 +92,8 @@ const roomId = urlParams.get('room') || 'public';
 // Get player name: Telegram WebApp → URL param → random
 function getTelegramName() {
     try {
-        const tg = window.Telegram && window.Telegram.WebApp;
-        if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            const u = tg.initDataUnsafe.user;
+        if (tgApp && tgApp.initDataUnsafe && tgApp.initDataUnsafe.user) {
+            const u = tgApp.initDataUnsafe.user;
             let name = u.first_name || '';
             if (u.last_name) name += ' ' + u.last_name.charAt(0) + '.';
             return name.trim() || null;
@@ -331,7 +348,10 @@ class GameScene extends Phaser.Scene {
         // Camera
         this.cameras.main.setBounds(0, 0, W, H);
         this.cameras.main.startFollow(this.myPlayer, true, 0.1, 0.1);
-        this.cameras.main.setZoom(isMobile ? 1.0 : 1.2);
+
+        // Base zoom logic for FOV parity
+        const baseZoom = isMobile ? 0.8 : 1.0;
+        this.cameras.main.setZoom(baseZoom);
 
         // Input
         this.keys = this.input.keyboard.addKeys('W,A,S,D,R');
@@ -770,6 +790,13 @@ class GameScene extends Phaser.Scene {
         document.getElementById('armor-bar').textContent = '🛡️ ' + Math.round(myArmor);
         document.getElementById('weapon-info').textContent = '🔫 ' + myWeapon.name;
         document.getElementById('ammo-info').textContent = '💥 ' + myWeapon.currentAmmo + ' / ' + myWeapon.maxAmmo;
+
+        // Update Zoom depending on weapon (SNIPER ZOOM)
+        if (this.cameras && this.cameras.main) {
+            let targetZoom = isMobile ? 0.8 : 1.0;
+            if (myWeapon.name === 'Снайперка') targetZoom -= 0.25; // Zoom out to see more
+            this.cameras.main.setZoom(targetZoom);
+        }
     }
 
     showFloatingText(x, y, text, color) {
@@ -790,7 +817,7 @@ class GameScene extends Phaser.Scene {
         let vx = 0, vy = 0;
 
         if (isMobile) {
-            // === MOBILE: analog joystick movement ===
+            // === MOBILE: LEFT STICK — movement + head rotation ===
             if (touchMove.active) {
                 const R = CFG.JOYSTICK_RADIUS;
                 const dist = Math.sqrt(touchMove.dx * touchMove.dx + touchMove.dy * touchMove.dy);
@@ -798,17 +825,25 @@ class GameScene extends Phaser.Scene {
                 if (dist > 3) { // dead zone
                     vx = (touchMove.dx / dist) * speed * power;
                     vy = (touchMove.dy / dist) * speed * power;
+                    // Rotate head toward movement direction
+                    const moveAngle = Math.atan2(touchMove.dy, touchMove.dx);
+                    this.myPlayer.setRotation(moveAngle);
                 }
             }
 
-            // === MOBILE: aim joystick → rotate + auto-fire ===
+            // === MOBILE: RIGHT STICK — aim + shoot (overrides head rotation) ===
             if (touchAim.active) {
                 const dist = Math.sqrt(touchAim.dx * touchAim.dx + touchAim.dy * touchAim.dy);
+                const R = CFG.JOYSTICK_RADIUS;
                 if (dist > 8) { // dead zone
                     const angle = Math.atan2(touchAim.dy, touchAim.dx);
+                    // Override rotation to face aim direction while shooting
                     this.myPlayer.setRotation(angle);
-                    // Auto-fire while aiming
-                    this.shootAtAngle(angle);
+
+                    // Fire when joystick is pulled past 40% of radius
+                    if (dist > R * 0.4) {
+                        this.shootAtAngle(angle);
+                    }
                 }
             }
         } else {
@@ -833,6 +868,15 @@ class GameScene extends Phaser.Scene {
         this.myGun.setPosition(this.myPlayer.x, this.myPlayer.y);
         this.myGun.setRotation(this.myPlayer.rotation);
 
+        // Variable gun length depending on type
+        let gunScaleX = 1.0;
+        if (myWeapon.name === 'Автомат') gunScaleX = 1.4;
+        if (myWeapon.name === 'Снайперка') gunScaleX = 1.8;
+        if (myWeapon.name === 'Дробовик') gunScaleX = 1.2;
+
+        // Apply scales
+        this.myGun.setScale(gunScaleX, 1.0);
+
         // Name label follow
         this.myNameLabel.setPosition(this.myPlayer.x, this.myPlayer.y - 25);
 
@@ -850,14 +894,13 @@ class GameScene extends Phaser.Scene {
         if (inBush) {
             this.myPlayer.setAlpha(0.1);
             this.myNameLabel.setAlpha(0);
-            this.myGun.setScale(1.6, 1.0); // Lengthen gun
+            this.myGun.setScale(1.6 * gunScaleX, 1.0); // Lengthen even more in bush? Keep relative.
             this.myGun.setX(this.myPlayer.x + Math.cos(this.myPlayer.rotation) * 5);
             this.myGun.setY(this.myPlayer.y + Math.sin(this.myPlayer.rotation) * 5);
         } else {
             this.myPlayer.setAlpha(1);
             this.myNameLabel.setAlpha(1);
-            this.myGun.setScale(1.0, 1.0);
-            this.myGun.setPosition(this.myPlayer.x, this.myPlayer.y);
+            // Already set above
         }
 
         // --- Crosshair position ---
